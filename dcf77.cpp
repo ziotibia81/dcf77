@@ -1876,6 +1876,21 @@ namespace Internal {
             Clock_Controller::process_1_kHz_tick_data(the_input_provider());
         }
         #endif
+
+        #if defined(ARDUINO_ARCH_ESP32)
+        hw_timer_t *timer = NULL;
+        
+        void setup(const Clock::input_provider_t input_provider) {
+            timer = timerBegin(1000000); // Set timer frequency to 1Mhz, 1 us tick
+            timerAttachInterrupt(timer, &isr_handler);
+            timerAlarm(timer, 1000, true, 0);  // call isr_handler function every 1000 microseconds
+            the_input_provider = input_provider;
+        }
+
+        void ARDUINO_ISR_ATTR isr_handler() {
+            Clock_Controller::process_1_kHz_tick_data(the_input_provider());        
+        }
+        #endif
     }
 }
 
