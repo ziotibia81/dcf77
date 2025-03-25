@@ -1683,6 +1683,10 @@ namespace Internal {
                 const int16_t pp16m = adjust_pp16m;
                 return pp16m;
             }
+            #if defined(ARDUINO_ARCH_ESP8266)
+            //Workaround to [-Werror=return-type]  
+            return 0;
+            #endif
         }
 
         #if defined(__AVR_ATmega168__)  || \
@@ -1874,6 +1878,56 @@ namespace Internal {
             }
 
             Clock_Controller::process_1_kHz_tick_data(the_input_provider());
+        }
+        #endif
+
+        #if defined(ARDUINO_ARCH_ESP8266)
+        const uint32_t timer_freq = 5000000;
+        const uint32_t ticks_per_ms = timer_freq/1000;
+        const uint32_t ticks_per_us = ticks_per_ms/1000;
+        
+        void setup(const Clock::input_provider_t input_provider) {      
+            timer1_disable();
+            timer1_attachInterrupt(isr_handler);
+            timer1_isr_init();
+            timer1_write(ticks_per_ms);
+            timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP);
+            the_input_provider = input_provider;
+        }
+
+        // 1000 / 5 000 000 = 1 / 5 000
+        const uint16_t inverse_timer_resolution = 5000;
+
+        // The Arduino core introduces significant overhead in `timer1_write()` and
+        // before each call to `isr_handler()`. To mitigate this, we write the timer counter
+        // directly into the `T1L` register. That's not enough: to execute the phase correction,
+        // we have to rewrite the counter each time the ISR occurs, but the overhead
+        // takes some time. Using an oscilloscope and some `digitalWrite()` calls inside the ISR,
+        // I measured 2.4 µs (12 ticks) lost by the timer for each adjustment.
+        // This delay causes a frequency deviation from 1 kHz that is too high, and signal decoding fails.
+        // A workaround is mandatory. One possible solution could be to use the ESP API directly instead of
+        // the Arduino core. Another approach could be to compare the timer with `ESP.getCycleCount()`,
+        // or something similar, to make the appropriate correction. For now, we have settled
+        // to apply a static correction.
+        const uint16_t ticks_per_ms_correction = ticks_per_ms - 12;
+
+        void ICACHE_RAM_ATTR isr_handler() {
+            cumulated_phase_deviation += adjust_pp16m;
+            if (cumulated_phase_deviation >= inverse_timer_resolution) {
+                cumulated_phase_deviation -= inverse_timer_resolution;
+                // cumulated drift exceeds microsecond)
+                // drop microsecond step to realign
+                T1L = ((ticks_per_ms_correction - ticks_per_us)& 0x7FFFFF);
+            } else if (cumulated_phase_deviation <= -inverse_timer_resolution) {
+                //cumulated_phase_deviation += inverse_timer_resolution;
+                // cumulated drift exceeds 1 microsecond
+                // insert one microsecond to realign
+                T1L = ((ticks_per_ms_correction + ticks_per_us)& 0x7FFFFF);
+            } else {
+                T1L = ((ticks_per_ms_correction)& 0x7FFFFF);
+            }
+          
+            Clock_Controller::process_1_kHz_tick_data(the_input_provider());        
         }
         #endif
     }
