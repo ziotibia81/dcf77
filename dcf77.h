@@ -79,8 +79,12 @@ struct Configuration {
 
     // the constant(s) below are assumed to be configured by the user of the library
 
+    #if defined(ARDUINO_ARCH_ESP32)
+    //Low memory footprint default for ESP32
+    static const bool want_high_phase_lock_resolution = false;
+    #else
     static const bool want_high_phase_lock_resolution = true;
-    //const bool want_high_phase_lock_resolution = false;
+    #endif
 
     // end of configuration section, the stuff below
     // will compute the implications of the desired configuration,
