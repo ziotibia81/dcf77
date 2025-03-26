@@ -1879,12 +1879,12 @@ namespace Internal {
 
         #if defined(ARDUINO_ARCH_ESP32)
         hw_timer_t *timer = NULL;
-        const uint32_t GPTimer_freq = 1000000;
+        const uint32_t GPTimer_freq = 16000000;
         const uint32_t ticks_per_ms = GPTimer_freq/1000;
         const uint32_t ticks_per_us = ticks_per_ms/1000;
         
         void setup(const Clock::input_provider_t input_provider) {
-            timer = timerBegin(GPTimer_freq); // Set timer frequency to 1Mhz, 1 us tick
+            timer = timerBegin(GPTimer_freq); // Set timer frequency to 16Mhz, 0,0625 us tick
             timerAttachInterrupt(timer, &isr_handler);
             timerAlarm(timer, ticks_per_ms, true, 0);  // call isr_handler function onetime after 1000 microseconds
             the_input_provider = input_provider;
