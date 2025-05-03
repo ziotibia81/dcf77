@@ -553,6 +553,31 @@ namespace Internal {
         #warning Compiling for Linux target only supported for unit test purposes. Only fake support for atomic sections. Please take care.
 
         #define CRITICAL_SECTION for (int __n = 1; __n; __n = 0)
+    #elif defined(ARDUINO_ARCH_ESP8266)
+        #warning Experimental ESP8266 support using Arduino core for ESP8266
+        //Inspired by
+        // --> https://github.com/wizard97/SimplyAtomic/blob/master/esp8266.h
+        #ifndef __STRINGIFY
+           #define __STRINGIFY(a) #a
+        #endif
+        
+        #ifndef xt_rsil
+            #define xt_rsil(level) (__extension__({uint32_t state; __asm__ __volatile__("rsil %0," __STRINGIFY(level) : "=a" (state)); state;}))
+        #endif
+
+        #ifndef xt_wsr_ps
+            #define xt_wsr_ps(state)  __asm__ __volatile__("wsr %0,ps; isync" :: "a" (state) : "memory")
+        #endif
+        
+        static __inline__ void SA_iRestore(const  uint32_t *__s){
+                xt_wsr_ps(*__s);
+        }
+
+        // Note value can be 0-15, 0 = Enable all interrupts, 15 = no interrupts
+        #define SA_ATOMIC_RESTORESTATE uint32_t _sa_saved              \
+           __attribute__((__cleanup__(SA_iRestore))) = xt_rsil(15)
+
+        #define CRITICAL_SECTION for ( SA_ATOMIC_RESTORESTATE, _sa_done =  1; _sa_done; _sa_done = 0 )
     #else
         #error Unsupported controller architecture
     #endif
@@ -1135,8 +1160,14 @@ namespace Internal {
         struct dummy_stage {
             void    reset()                            const {}
             void    reduce(const uint8_t sampled_data) const {}
+            #if defined(ARDUINO_ARCH_ESP8266)
+            //Workaround to [-Werror=return-type] 
+            bool    data_ready()                       const {return 0;}
+            uint8_t avg()                              const {return 0;}
+            #else
             bool    data_ready()                       const {}
             uint8_t avg()                              const {}
+            #endif
         };
 
         static const bool requires_averages = samples_per_bin > 1;
